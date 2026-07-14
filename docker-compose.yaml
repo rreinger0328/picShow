@@ -7,7 +7,14 @@ services:
       - "${PICSHOW_PORT:-5000}:5000"
     environment:
       PICSHOW_MEDIA_DIR: /app/media
+      PICSHOW_CACHE_DIR: /app/.picshow-cache
       PICSHOW_PASSWORD: ${PICSHOW_PASSWORD:-picshow}
       PICSHOW_SECRET_KEY: ${PICSHOW_SECRET_KEY:-picshow-local-secret}
+      PICSHOW_THUMBNAIL_SIZE: ${PICSHOW_THUMBNAIL_SIZE:-640}
+      PICSHOW_ZOOM_PREVIEW_SIZE: ${PICSHOW_ZOOM_PREVIEW_SIZE:-2200}
     volumes:
-      - ${PICSHOW_HOST_MEDIA_DIR:-/vol1/1002/Photos/show}:/app/media
+      - "${PICSHOW_HOST_MEDIA_DIR:-/vol1/1002/Photos/show}:/app/media:ro"
+      - picshow-cache:/app/.picshow-cache
+
+volumes:
+  picshow-cache:

@@ -59,28 +59,54 @@
       </header>
 
       <main>
-        <p class="gallery-note">原图点击为下载静态图，视频点击为下载动态播放视频。</p>
+        <p class="gallery-note">缩略图用于快速浏览，点击图片可放大；原图为静态图，视频为动态播放视频。</p>
         {% if items %}
           <section class="gallery" id="gallery" aria-live="polite">
             {% for item in items %}
               <article
-                class="tile{% if item.is_live %} is-live{% endif %}{% if not item.browser_image %} is-unsupported{% endif %}"
+                class="tile{% if item.is_live %} is-live{% endif %}{% if not item.previewable and not item.browser_image %} is-unsupported{% endif %}"
                 data-name="{{ (item.title ~ ' ' ~ item.folder ~ ' ' ~ item.extension)|lower }}"
-                data-tags="{% if item.is_live %}live{% else %}photo{% endif %} {% if not item.browser_image %}unsupported{% endif %}"
+                data-tags="{% if item.is_live %}live{% else %}photo{% endif %} {% if not item.previewable and not item.browser_image %}unsupported{% endif %}"
                 tabindex="0"
               >
                 <div class="media-frame">
-                  {% if item.browser_image %}
-                    <img
-                      src="{{ url_for('media_file', relative_path=item.image_rel) }}"
-                      alt="{{ item.title }}"
-                      loading="lazy"
+                  {% if item.previewable %}
+                    <button
+                      type="button"
+                      class="image-open"
+                      data-zoom-src="{{ url_for('preview_file', relative_path=item.image_rel, size='large') }}"
+                      data-download-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      data-title="{{ item.title }}"
+                      aria-label="放大 {{ item.title }}"
                     >
+                      <img
+                        src="{{ url_for('preview_file', relative_path=item.image_rel, size='thumb') }}"
+                        alt="{{ item.title }}"
+                        loading="lazy"
+                        decoding="async"
+                      >
+                    </button>
+                  {% elif item.browser_image %}
+                    <button
+                      type="button"
+                      class="image-open"
+                      data-zoom-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      data-download-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      data-title="{{ item.title }}"
+                      aria-label="放大 {{ item.title }}"
+                    >
+                      <img
+                        src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                        alt="{{ item.title }}"
+                        loading="lazy"
+                        decoding="async"
+                      >
+                    </button>
                   {% elif item.video_rel %}
                     <video
                       class="live-video is-primary"
-                      src="{{ url_for('media_file', relative_path=item.video_rel) }}"
-                      preload="metadata"
+                      data-src="{{ url_for('media_file', relative_path=item.video_rel) }}"
+                      preload="none"
                       playsinline
                       muted
                       loop
@@ -92,11 +118,11 @@
                     </div>
                   {% endif %}
 
-                  {% if item.video_rel and item.browser_image %}
+                  {% if item.video_rel and (item.previewable or item.browser_image) %}
                     <video
                       class="live-video"
-                      src="{{ url_for('media_file', relative_path=item.video_rel) }}"
-                      preload="metadata"
+                      data-src="{{ url_for('media_file', relative_path=item.video_rel) }}"
+                      preload="none"
                       playsinline
                       muted
                       loop
@@ -145,6 +171,23 @@
           </section>
         {% endif %}
       </main>
+
+      <div class="lightbox" id="image-lightbox" hidden>
+        <button type="button" class="lightbox-backdrop" data-lightbox-close aria-label="关闭预览"></button>
+        <figure class="lightbox-panel" role="dialog" aria-modal="true" aria-label="图片预览">
+          <button type="button" class="lightbox-close" data-lightbox-close aria-label="关闭预览">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+          <img id="lightbox-image" alt="">
+          <figcaption>
+            <span id="lightbox-title"></span>
+            <a id="lightbox-download" href="#" download>原图</a>
+          </figcaption>
+        </figure>
+      </div>
     </div>
   </body>
 </html>

@@ -240,6 +240,8 @@ main {
   border-radius: 8px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  content-visibility: auto;
+  contain-intrinsic-size: 340px;
   outline: none;
 }
 
@@ -259,6 +261,24 @@ main {
   background: #dfe5ec;
 }
 
+.image-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  padding: 0;
+}
+
+.image-open:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: -3px;
+}
+
 .media-frame img,
 .media-frame video {
   position: absolute;
@@ -276,6 +296,7 @@ main {
 .live-video {
   z-index: 2;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 150ms ease;
 }
 
@@ -284,6 +305,10 @@ main {
 .tile.is-live:hover .live-video,
 .tile.is-live:focus-within .live-video {
   opacity: 1;
+}
+
+.live-video.is-primary {
+  pointer-events: auto;
 }
 
 .live-badge {
@@ -412,6 +437,119 @@ main {
 
 .sound-toggle[aria-pressed="true"] .sound-off {
   display: none;
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 3vw, 34px);
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(10, 15, 25, 0.72);
+  cursor: zoom-out;
+}
+
+.lightbox-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: min(100%, 1180px);
+  max-height: calc(100vh - 48px);
+  margin: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0f172a;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.lightbox-panel img {
+  display: block;
+  width: 100%;
+  height: min(78vh, 820px);
+  object-fit: contain;
+  background: #0b1020;
+}
+
+.lightbox-panel figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 48px;
+  color: #ffffff;
+  padding: 10px 14px;
+}
+
+.lightbox-panel figcaption span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-panel figcaption a {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
+.lightbox-panel figcaption a:hover,
+.lightbox-panel figcaption a:focus-visible {
+  border-color: #ffffff;
+  outline: none;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.lightbox-close:hover,
+.lightbox-close:focus-visible {
+  border-color: #ffffff;
+  outline: none;
+}
+
+.lightbox-close svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+body.is-lightbox-open {
+  overflow: hidden;
 }
 
 .empty-page,
@@ -557,5 +695,9 @@ main {
   .gallery {
     grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
     gap: 12px;
+  }
+
+  .lightbox-panel img {
+    height: 72vh;
   }
 }

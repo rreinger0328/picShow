@@ -16,5 +16,6 @@ build
 *.egg-info
 .env
 .env.*
+.picshow-cache
 media/*
 !media/.gitkeep

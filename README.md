@@ -6,7 +6,8 @@
 
 - 递归扫描图片目录。
 - 支持 `.jpg`、`.jpeg`、`.png`、`.gif`、`.webp`、`.bmp`、`.svg`、`.avif` 等浏览器可直接展示的图片。
-- 识别 `.heic`、`.heif`、`.tif`、`.tiff` 等图片并展示为待转码项目。
+- 通过服务端缓存预览直接展示 `.heic`、`.heif`、`.tif`、`.tiff` 等格式。
+- 使用 WebP 缩略图快速加载大量照片，点击图片可以打开大图预览。
 - 自动匹配同目录、同文件名的 `.mov`、`.mp4`、`.m4v` 作为 Live Photo 视频。
 - 支持文件名/文件夹搜索，以及全部、照片、实况、待转码筛选。
 
@@ -23,7 +24,7 @@ media/
     IMG_1002.MOV
 ```
 
-应用会把这些文件识别为实况图片。浏览器不能直接显示的 HEIC/HEIF 图片会优先显示配对视频。
+应用会把这些文件识别为实况图片。HEIC/HEIF 原图会在服务端转成 WebP 预览用于网页展示，原图按钮仍下载原始静态图文件。
 
 ## 本地运行
 
@@ -49,6 +50,15 @@ $env:PICSHOW_SECRET_KEY="replace-with-a-long-random-string"
 python app.py
 ```
 
+缩略图和大图预览会缓存在 `.picshow-cache/`。可以调整缓存目录和预览尺寸：
+
+```powershell
+$env:PICSHOW_CACHE_DIR=".picshow-cache"
+$env:PICSHOW_THUMBNAIL_SIZE="640"
+$env:PICSHOW_ZOOM_PREVIEW_SIZE="2200"
+python app.py
+```
+
 打开 [http://localhost:5000](http://localhost:5000)。
 
 ## Docker
@@ -59,16 +69,16 @@ python app.py
 docker build -t picshow .
 ```
 
-运行容器并挂载图片目录，同时设置访问密码：
+运行容器并挂载图片目录、缓存目录，同时设置访问密码：
 
 ```powershell
-docker run --rm -p 5000:5000 -e PICSHOW_PASSWORD=your-password -v ${PWD}\media:/app/media picshow
+docker run --rm -p 5000:5000 -e PICSHOW_PASSWORD=your-password -v ${PWD}\media:/app/media:ro -v picshow-cache:/app/.picshow-cache picshow
 ```
 
 指定其它图片目录：
 
 ```powershell
-docker run --rm -p 5000:5000 -e PICSHOW_PASSWORD=your-password -v D:\Photos:/app/media picshow
+docker run --rm -p 5000:5000 -e PICSHOW_PASSWORD=your-password -v D:\Photos:/app/media:ro -v picshow-cache:/app/.picshow-cache picshow
 ```
 
 ## Docker Compose
@@ -102,8 +112,11 @@ docker compose up -d
 | `PICSHOW_MEDIA_DIR` | `media` | 图片扫描根目录（容器内为 `/app/media`） |
 | `PICSHOW_PASSWORD` | `picshow` | 网页登录密码 |
 | `PICSHOW_SECRET_KEY` | 随机生成 | Flask session 签名密钥，用于加密用户的登录会话 cookie。**如果不设置固定值，每次重启应用密钥都会变化，所有已登录用户将被强制退出。** 建议通过环境变量或 `.env` 文件设置一个固定的随机字符串。 |
+| `PICSHOW_CACHE_DIR` | `.picshow-cache` | WebP 缩略图和大图预览缓存目录（容器内为 `/app/.picshow-cache`） |
+| `PICSHOW_THUMBNAIL_SIZE` | `640` | 列表缩略图最长边尺寸 |
+| `PICSHOW_ZOOM_PREVIEW_SIZE` | `2200` | 点击放大预览图最长边尺寸 |
 | `PICSHOW_PORT` | `5000` | 应用监听端口（仅 Docker Compose） |
-| `PICSHOW_HOST_MEDIA_DIR` | `./media` | 宿主机图片目录（仅 Docker Compose） |
+| `PICSHOW_HOST_MEDIA_DIR` | `/vol1/1002/Photos/show` | 宿主机图片目录（仅 Docker Compose） |
 
 生成安全的 `PICSHOW_SECRET_KEY`：
 

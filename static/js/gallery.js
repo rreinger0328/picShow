@@ -2,6 +2,12 @@ const searchInput = document.querySelector("#gallery-search");
 const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
 const tiles = Array.from(document.querySelectorAll(".tile"));
 const emptyResult = document.querySelector("#empty-result");
+const zoomButtons = Array.from(document.querySelectorAll(".image-open"));
+const lightbox = document.querySelector("#image-lightbox");
+const lightboxImage = document.querySelector("#lightbox-image");
+const lightboxTitle = document.querySelector("#lightbox-title");
+const lightboxDownload = document.querySelector("#lightbox-download");
+const lightboxCloseButtons = Array.from(document.querySelectorAll("[data-lightbox-close]"));
 
 let activeFilter = "all";
 let activeSoundTile = null;
@@ -33,6 +39,15 @@ function filterGallery() {
 
 function getPlayableVideo(tile) {
   return tile.querySelector(".live-video");
+}
+
+function ensureVideoSource(video) {
+  if (!video || video.src || !video.dataset.src) {
+    return;
+  }
+
+  video.src = video.dataset.src;
+  video.load();
 }
 
 function getSoundButton(tile) {
@@ -80,6 +95,7 @@ function playTile(tile) {
     return;
   }
 
+  ensureVideoSource(video);
   tile.classList.add("is-playing");
   video.play().catch(() => {
     tile.classList.remove("is-playing");
@@ -97,6 +113,34 @@ function pauseTile(tile) {
   tile.classList.remove("is-playing");
 }
 
+function openLightbox(button) {
+  if (!lightbox || !lightboxImage) {
+    return;
+  }
+
+  setSoundTile(null);
+  lightboxImage.src = button.dataset.zoomSrc || "";
+  lightboxImage.alt = button.dataset.title || "";
+  if (lightboxTitle) {
+    lightboxTitle.textContent = button.dataset.title || "";
+  }
+  if (lightboxDownload) {
+    lightboxDownload.href = button.dataset.downloadSrc || "#";
+  }
+  lightbox.hidden = false;
+  document.body.classList.add("is-lightbox-open");
+}
+
+function closeLightbox() {
+  if (!lightbox || !lightboxImage) {
+    return;
+  }
+
+  lightbox.hidden = true;
+  lightboxImage.removeAttribute("src");
+  document.body.classList.remove("is-lightbox-open");
+}
+
 if (searchInput) {
   searchInput.addEventListener("input", filterGallery);
 }
@@ -110,6 +154,20 @@ for (const button of filterButtons) {
     filterGallery();
   });
 }
+
+for (const button of zoomButtons) {
+  button.addEventListener("click", () => openLightbox(button));
+}
+
+for (const button of lightboxCloseButtons) {
+  button.addEventListener("click", closeLightbox);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && lightbox && !lightbox.hidden) {
+    closeLightbox();
+  }
+});
 
 for (const tile of tiles) {
   if (!tile.classList.contains("is-live")) {

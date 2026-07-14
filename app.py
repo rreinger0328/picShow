@@ -8,7 +8,24 @@ from datetime import datetime
 from hmac import compare_digest
 from pathlib import Path
 
-from flask import Flask, abort, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, abort, redirect, render_template, request, send_file, send_from_directory, session, url_for
+
+try:
+    from PIL import Image, ImageOps
+
+    PIL_SUPPORT_AVAILABLE = True
+except ImportError:
+    Image = None
+    ImageOps = None
+    PIL_SUPPORT_AVAILABLE = False
+
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    HEIF_SUPPORT_AVAILABLE = True
+except ImportError:
+    HEIF_SUPPORT_AVAILABLE = False
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +56,8 @@ BROWSER_IMAGE_EXTENSIONS = {
     ".svg",
     ".webp",
 }
+PREVIEW_IMAGE_EXTENSIONS = IMAGE_EXTENSIONS - {".svg"}
+HEIF_IMAGE_EXTENSIONS = {".heic", ".heif"}
 VIDEO_EXTENSIONS = {
     ".m4v",
     ".mov",
@@ -60,6 +79,7 @@ class MediaItem:
     video_rel: str | None
     extension: str
     browser_image: bool
+    previewable: bool
     size: int
     modified_at: datetime
 
@@ -72,9 +92,13 @@ def create_app() -> Flask:
     app = Flask(__name__)
 
     app.config["MEDIA_ROOT"] = resolve_media_root()
+    app.config["CACHE_ROOT"] = resolve_cache_root()
+    app.config["THUMBNAIL_SIZE"] = int_env("PICSHOW_THUMBNAIL_SIZE", 640)
+    app.config["ZOOM_PREVIEW_SIZE"] = int_env("PICSHOW_ZOOM_PREVIEW_SIZE", 2200)
     app.config["ACCESS_PASSWORD"] = os.environ.get("PICSHOW_PASSWORD", "picshow")
     app.secret_key = os.environ.get("PICSHOW_SECRET_KEY", secrets.token_hex(32))
     app.config["MEDIA_ROOT"].mkdir(parents=True, exist_ok=True)
+    app.config["CACHE_ROOT"].mkdir(parents=True, exist_ok=True)
 
     @app.before_request
     def require_login():
@@ -129,7 +153,7 @@ def create_app() -> Flask:
         counts = {
             "total": len(items),
             "live": sum(1 for item in items if item.is_live),
-            "unsupported": sum(1 for item in items if not item.browser_image),
+            "unsupported": sum(1 for item in items if not item.previewable and not item.browser_image),
         }
         counts["photo"] = counts["total"] - counts["live"]
 
@@ -143,10 +167,31 @@ def create_app() -> Flask:
     @app.route("/files/<path:relative_path>")
     def media_file(relative_path: str):
         media_root = app.config["MEDIA_ROOT"]
-        target = (media_root / relative_path).resolve()
-        if not is_relative_to(target, media_root) or not target.is_file():
+        target = resolve_media_file(media_root, relative_path)
+        if target is None:
             abort(404)
         return send_from_directory(media_root, relative_path, conditional=True)
+
+    @app.route("/previews/<path:relative_path>")
+    def preview_file(relative_path: str):
+        media_root = app.config["MEDIA_ROOT"]
+        target = resolve_media_file(media_root, relative_path)
+        if target is None or target.suffix.lower() not in PREVIEW_IMAGE_EXTENSIONS:
+            abort(404)
+        if not can_generate_preview(target.suffix.lower()):
+            abort(415)
+
+        size_name = request.args.get("size", "thumb")
+        max_size = app.config["ZOOM_PREVIEW_SIZE"] if size_name == "large" else app.config["THUMBNAIL_SIZE"]
+        cache_path = preview_cache_path(
+            app.config["CACHE_ROOT"],
+            media_root,
+            target,
+            max_size,
+        )
+        if not cache_path.exists():
+            generate_preview(target, cache_path, max_size)
+        return send_file(cache_path, mimetype="image/webp", conditional=True, max_age=86400)
 
     return app
 
@@ -157,6 +202,22 @@ def resolve_media_root() -> Path:
     if not media_root.is_absolute():
         media_root = BASE_DIR / media_root
     return media_root.resolve()
+
+
+def resolve_cache_root() -> Path:
+    configured = os.environ.get("PICSHOW_CACHE_DIR", ".picshow-cache")
+    cache_root = Path(configured).expanduser()
+    if not cache_root.is_absolute():
+        cache_root = BASE_DIR / cache_root
+    return cache_root.resolve()
+
+
+def int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return max(128, value)
 
 
 def scan_media(media_root: Path) -> list[MediaItem]:
@@ -189,6 +250,7 @@ def scan_media(media_root: Path) -> list[MediaItem]:
                 video_rel=video_path.relative_to(media_root).as_posix() if video_path else None,
                 extension=extension.lstrip("."),
                 browser_image=extension in BROWSER_IMAGE_EXTENSIONS,
+                previewable=can_generate_preview(extension),
                 size=stat.st_size,
                 modified_at=datetime.fromtimestamp(stat.st_mtime),
             )
@@ -229,6 +291,49 @@ def is_relative_to(path: Path, base: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def resolve_media_file(media_root: Path, relative_path: str) -> Path | None:
+    target = (media_root / relative_path).resolve()
+    if not is_relative_to(target, media_root) or not target.is_file():
+        return None
+    return target
+
+
+def can_generate_preview(extension: str) -> bool:
+    if not PIL_SUPPORT_AVAILABLE or extension not in PREVIEW_IMAGE_EXTENSIONS:
+        return False
+    if extension in HEIF_IMAGE_EXTENSIONS and not HEIF_SUPPORT_AVAILABLE:
+        return False
+    return True
+
+
+def preview_cache_path(cache_root: Path, media_root: Path, source: Path, max_size: int) -> Path:
+    source_stat = source.stat()
+    relative_path = source.relative_to(media_root).as_posix()
+    cache_key = f"{relative_path}:{source_stat.st_mtime_ns}:{source_stat.st_size}:{max_size}"
+    digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
+    return cache_root / digest[:2] / f"{digest}.webp"
+
+
+def generate_preview(source: Path, destination: Path, max_size: int) -> None:
+    if Image is None or ImageOps is None:
+        abort(415)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_destination = destination.with_name(f"{destination.stem}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        with Image.open(source) as image:
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            if image.mode not in {"RGB", "L"}:
+                image = image.convert("RGB")
+            image.save(temp_destination, "WEBP", quality=82, method=4)
+        os.replace(temp_destination, destination)
+    except Exception:
+        if temp_destination.exists():
+            temp_destination.unlink()
+        abort(415)
 
 
 def safe_next_url(next_url: str | None) -> str | None:
