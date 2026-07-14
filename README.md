@@ -73,20 +73,42 @@ docker run --rm -p 5000:5000 -e PICSHOW_PASSWORD=your-password -v D:\Photos:/app
 
 ## Docker Compose
 
-默认把宿主机当前项目的 `./media` 映射到容器 `/app/media`：
+使用 `ghcr.io/rreinger0328/picshow:latest` 镜像，默认将 `/vol1/1002/Photos/show` 映射到容器的 `/app/media`。
 
 ```powershell
-docker compose up -d --build
+docker compose up -d
 ```
 
-默认访问密码是 `picshow`。可以在启动前修改宿主机图片目录、端口和密码：
+可以复制 `.env.example` 为 `.env` 并修改其中的配置：
 
 ```powershell
-$env:PICSHOW_HOST_MEDIA_DIR="D:\Photos"
+cp .env.example .env
+```
+
+也可以直接在命令行设置环境变量：
+
+```powershell
+$env:PICSHOW_HOST_MEDIA_DIR="/vol1/1002/Photos/show"
 $env:PICSHOW_PORT="5000"
 $env:PICSHOW_PASSWORD="your-password"
 $env:PICSHOW_SECRET_KEY="replace-with-a-long-random-string"
-docker compose up -d --build
+docker compose up -d
+```
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PICSHOW_MEDIA_DIR` | `media` | 图片扫描根目录（容器内为 `/app/media`） |
+| `PICSHOW_PASSWORD` | `picshow` | 网页登录密码 |
+| `PICSHOW_SECRET_KEY` | 随机生成 | Flask session 签名密钥，用于加密用户的登录会话 cookie。**如果不设置固定值，每次重启应用密钥都会变化，所有已登录用户将被强制退出。** 建议通过环境变量或 `.env` 文件设置一个固定的随机字符串。 |
+| `PICSHOW_PORT` | `5000` | 应用监听端口（仅 Docker Compose） |
+| `PICSHOW_HOST_MEDIA_DIR` | `./media` | 宿主机图片目录（仅 Docker Compose） |
+
+生成安全的 `PICSHOW_SECRET_KEY`：
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 ## GitHub Actions
