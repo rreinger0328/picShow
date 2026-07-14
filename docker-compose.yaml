@@ -1,0 +1,14 @@
+services:
+  picshow:
+    build: .
+    image: picshow:latest
+    container_name: picshow
+    restart: unless-stopped
+    ports:
+      - "${PICSHOW_PORT:-5000}:5000"
+    environment:
+      PICSHOW_MEDIA_DIR: /app/media
+      PICSHOW_PASSWORD: ${PICSHOW_PASSWORD:-picshow}
+      PICSHOW_SECRET_KEY: ${PICSHOW_SECRET_KEY:-picshow-local-secret}
+    volumes:
+      - ${PICSHOW_HOST_MEDIA_DIR:-./media}:/app/media

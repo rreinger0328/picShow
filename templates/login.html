@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PicShow 登录</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  </head>
+  <body class="auth-page">
+    <main class="auth-shell">
+      <section class="auth-panel" aria-labelledby="login-title">
+        <p class="eyebrow">PicShow</p>
+        <h1 id="login-title">输入访问密码</h1>
+        <form method="post" class="auth-form">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <label for="password">访问密码</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            autofocus
+            required
+          >
+          {% if error %}
+            <p class="auth-error" role="alert">{{ error }}</p>
+          {% endif %}
+          <button type="submit">进入图片库</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

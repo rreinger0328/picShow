@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PicShow</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script defer src="{{ url_for('static', filename='js/gallery.js') }}"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-row">
+          <div>
+            <p class="eyebrow">PicShow</p>
+            <h1>图片库</h1>
+          </div>
+          <dl class="stats" aria-label="图片统计">
+            <div>
+              <dt>全部</dt>
+              <dd>{{ counts.total }}</dd>
+            </div>
+            <div>
+              <dt>实况</dt>
+              <dd>{{ counts.live }}</dd>
+            </div>
+            <div>
+              <dt>待转码</dt>
+              <dd>{{ counts.unsupported }}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-box" for="gallery-search">
+            <span class="visually-hidden">搜索图片</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="m21 21-4.3-4.3m1.3-5.2a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"></path>
+            </svg>
+            <input id="gallery-search" type="search" placeholder="搜索文件名或文件夹" autocomplete="off">
+          </label>
+
+          <div class="segmented" aria-label="筛选图片">
+            <button type="button" class="is-active" data-filter="all">全部</button>
+            <button type="button" data-filter="photo">照片</button>
+            <button type="button" data-filter="live">实况</button>
+            <button type="button" data-filter="unsupported">待转码</button>
+          </div>
+          <form method="post" action="{{ url_for('logout') }}" class="logout-form">
+            <button type="submit" title="退出登录" aria-label="退出登录">
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <path d="m16 17 5-5-5-5"></path>
+                <path d="M21 12H9"></path>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </header>
+
+      <main>
+        <p class="gallery-note">原图点击为下载静态图，视频点击为下载动态播放视频。</p>
+        {% if items %}
+          <section class="gallery" id="gallery" aria-live="polite">
+            {% for item in items %}
+              <article
+                class="tile{% if item.is_live %} is-live{% endif %}{% if not item.browser_image %} is-unsupported{% endif %}"
+                data-name="{{ (item.title ~ ' ' ~ item.folder ~ ' ' ~ item.extension)|lower }}"
+                data-tags="{% if item.is_live %}live{% else %}photo{% endif %} {% if not item.browser_image %}unsupported{% endif %}"
+                tabindex="0"
+              >
+                <div class="media-frame">
+                  {% if item.browser_image %}
+                    <img
+                      src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      alt="{{ item.title }}"
+                      loading="lazy"
+                    >
+                  {% elif item.video_rel %}
+                    <video
+                      class="live-video is-primary"
+                      src="{{ url_for('media_file', relative_path=item.video_rel) }}"
+                      preload="metadata"
+                      playsinline
+                      muted
+                      loop
+                      controls
+                    ></video>
+                  {% else %}
+                    <div class="unsupported-preview" aria-label="{{ item.extension }} 图片">
+                      <span>{{ item.extension|upper }}</span>
+                    </div>
+                  {% endif %}
+
+                  {% if item.video_rel and item.browser_image %}
+                    <video
+                      class="live-video"
+                      src="{{ url_for('media_file', relative_path=item.video_rel) }}"
+                      preload="metadata"
+                      playsinline
+                      muted
+                      loop
+                    ></video>
+                  {% endif %}
+
+                  {% if item.is_live %}
+                    <span class="live-badge">LIVE</span>
+                  {% endif %}
+                </div>
+
+                <div class="caption">
+                  <div class="caption-main">
+                    <h2 title="{{ item.title }}">{{ item.title }}</h2>
+                    <p>
+                      {% if item.folder %}{{ item.folder }} · {% endif %}
+                      {{ item.size|filesize }} · {{ item.modified_at|datetime_local }}
+                    </p>
+                  </div>
+                  <div class="actions">
+                    <a href="{{ url_for('media_file', relative_path=item.image_rel) }}" download>原图</a>
+                    {% if item.video_rel %}
+                      <a href="{{ url_for('media_file', relative_path=item.video_rel) }}" download>视频</a>
+                      <button type="button" class="sound-toggle" data-sound-toggle aria-pressed="false" title="开启声音">
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                          <path d="M11 5 6 9H3v6h3l5 4V5Z"></path>
+                          <path class="sound-wave" d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                          <path class="sound-wave" d="M18.5 5.5a9 9 0 0 1 0 13"></path>
+                          <path class="sound-off" d="m16 9 5 5"></path>
+                          <path class="sound-off" d="m21 9-5 5"></path>
+                        </svg>
+                        <span>开启声音</span>
+                      </button>
+                    {% endif %}
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </section>
+          <p class="empty-result" id="empty-result" hidden>没有匹配的图片</p>
+        {% else %}
+          <section class="empty-page">
+            <p class="eyebrow">PicShow</p>
+            <h2>暂无图片</h2>
+            <p>{{ media_root }}</p>
+          </section>
+        {% endif %}
+      </main>
+    </div>
+  </body>
+</html>
