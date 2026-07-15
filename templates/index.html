@@ -75,7 +75,7 @@
                       type="button"
                       class="image-open"
                       data-zoom-src="{{ url_for('preview_file', relative_path=item.image_rel, size='large') }}"
-                      data-download-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      data-download-src="{{ download_url(item.image_rel) }}"
                       data-title="{{ item.title }}"
                       aria-label="放大 {{ item.title }}"
                     >
@@ -91,7 +91,7 @@
                       type="button"
                       class="image-open"
                       data-zoom-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
-                      data-download-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
+                      data-download-src="{{ download_url(item.image_rel) }}"
                       data-title="{{ item.title }}"
                       aria-label="放大 {{ item.title }}"
                     >
@@ -143,9 +143,9 @@
                     </p>
                   </div>
                   <div class="actions">
-                    <a href="{{ url_for('media_file', relative_path=item.image_rel) }}" download>原图</a>
+                    <a href="{{ download_url(item.image_rel) }}" download>原图</a>
                     {% if item.video_rel %}
-                      <a href="{{ url_for('media_file', relative_path=item.video_rel) }}" download>视频</a>
+                      <a href="{{ download_url(item.video_rel) }}" download>视频</a>
                       <button type="button" class="sound-toggle" data-sound-toggle aria-pressed="false" title="开启声音">
                         <svg aria-hidden="true" viewBox="0 0 24 24">
                           <path d="M11 5 6 9H3v6h3l5 4V5Z"></path>

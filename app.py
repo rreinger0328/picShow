@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import secrets
 from dataclasses import dataclass
@@ -104,9 +105,33 @@ def create_app() -> Flask:
     def require_login():
         if request.endpoint in {"login", "static"}:
             return None
+        if request.endpoint == "download_file":
+            relative_path = (request.view_args or {}).get("relative_path")
+            if is_valid_download_token(
+                app.config["MEDIA_ROOT"],
+                relative_path,
+                request.args.get("token", ""),
+                app.secret_key,
+            ):
+                return None
         if session.get("authenticated"):
             return None
         return redirect(url_for("login", next=request.full_path))
+
+    @app.context_processor
+    def download_helpers():
+        def download_url(relative_path: str) -> str:
+            return url_for(
+                "download_file",
+                relative_path=relative_path,
+                token=download_token(
+                    app.config["MEDIA_ROOT"],
+                    relative_path,
+                    app.secret_key,
+                ),
+            )
+
+        return {"download_url": download_url}
 
     @app.template_filter("filesize")
     def filesize(value: int) -> str:
@@ -171,6 +196,20 @@ def create_app() -> Flask:
         if target is None:
             abort(404)
         return send_from_directory(media_root, relative_path, conditional=True)
+
+    @app.route("/downloads/<path:relative_path>")
+    def download_file(relative_path: str):
+        media_root = app.config["MEDIA_ROOT"]
+        target = resolve_media_file(media_root, relative_path)
+        if target is None:
+            abort(404)
+        return send_file(
+            target,
+            as_attachment=True,
+            download_name=target.name,
+            conditional=True,
+            max_age=0,
+        )
 
     @app.route("/previews/<path:relative_path>")
     def preview_file(relative_path: str):
@@ -298,6 +337,30 @@ def resolve_media_file(media_root: Path, relative_path: str) -> Path | None:
     if not is_relative_to(target, media_root) or not target.is_file():
         return None
     return target
+
+
+def download_token(media_root: Path, relative_path: str, secret_key: str) -> str:
+    target = resolve_media_file(media_root, relative_path)
+    if target is None:
+        return ""
+    return file_signature_token(media_root, target, secret_key)
+
+
+def is_valid_download_token(media_root: Path, relative_path: str | None, token: str, secret_key: str) -> bool:
+    if not relative_path or not token:
+        return False
+    target = resolve_media_file(media_root, relative_path)
+    if target is None:
+        return False
+    expected = file_signature_token(media_root, target, secret_key)
+    return compare_digest(token, expected)
+
+
+def file_signature_token(media_root: Path, target: Path, secret_key: str) -> str:
+    stat = target.stat()
+    relative_path = target.relative_to(media_root).as_posix()
+    message = f"{relative_path}:{stat.st_mtime_ns}:{stat.st_size}".encode("utf-8")
+    return hmac.new(secret_key.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def can_generate_preview(extension: str) -> bool:
