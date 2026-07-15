@@ -59,7 +59,7 @@
       </header>
 
       <main>
-        <p class="gallery-note">缩略图用于快速浏览，点击图片可放大；原图为静态图，视频为动态播放视频。</p>
+        <p class="gallery-note">缩略图用于快速浏览，点击图片可放大；安卓点原图保存 JPG，苹果设备点原图保存 HEIC，视频为动态播放视频。</p>
         {% if items %}
           <section class="gallery" id="gallery" aria-live="polite">
             {% for item in items %}
@@ -75,7 +75,7 @@
                       type="button"
                       class="image-open"
                       data-zoom-src="{{ url_for('preview_file', relative_path=item.image_rel, size='large') }}"
-                      data-download-src="{{ download_url(item.image_rel) }}"
+                      data-download-src="{{ mobile_download_url(item.image_rel) }}"
                       data-title="{{ item.title }}"
                       aria-label="放大 {{ item.title }}"
                     >
@@ -91,7 +91,7 @@
                       type="button"
                       class="image-open"
                       data-zoom-src="{{ url_for('media_file', relative_path=item.image_rel) }}"
-                      data-download-src="{{ download_url(item.image_rel) }}"
+                      data-download-src="{{ mobile_download_url(item.image_rel) }}"
                       data-title="{{ item.title }}"
                       aria-label="放大 {{ item.title }}"
                     >
@@ -143,7 +143,7 @@
                     </p>
                   </div>
                   <div class="actions">
-                    <a href="{{ download_url(item.image_rel) }}" download>原图</a>
+                    <a href="{{ mobile_download_url(item.image_rel) }}" download>原图</a>
                     {% if item.video_rel %}
                       <a href="{{ download_url(item.video_rel) }}" download>视频</a>
                       <button type="button" class="sound-toggle" data-sound-toggle aria-pressed="false" title="开启声音">

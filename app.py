@@ -88,6 +88,10 @@ class MediaItem:
     def is_live(self) -> bool:
         return self.video_rel is not None
 
+    @property
+    def is_heif(self) -> bool:
+        return f".{self.extension.lower()}" in HEIF_IMAGE_EXTENSIONS
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -105,13 +109,19 @@ def create_app() -> Flask:
     def require_login():
         if request.endpoint in {"login", "static"}:
             return None
-        if request.endpoint == "download_file":
+        download_variants = {
+            "download_file": "original",
+            "download_jpeg_file": "jpg",
+            "mobile_download_file": "mobile",
+        }
+        if request.endpoint in download_variants:
             relative_path = (request.view_args or {}).get("relative_path")
             if is_valid_download_token(
                 app.config["MEDIA_ROOT"],
                 relative_path,
                 request.args.get("token", ""),
                 app.secret_key,
+                download_variants[request.endpoint],
             ):
                 return None
         if session.get("authenticated"):
@@ -131,7 +141,36 @@ def create_app() -> Flask:
                 ),
             )
 
-        return {"download_url": download_url}
+        def jpeg_download_url(relative_path: str) -> str:
+            return url_for(
+                "download_jpeg_file",
+                relative_path=relative_path,
+                token=download_token(
+                    app.config["MEDIA_ROOT"],
+                    relative_path,
+                    app.secret_key,
+                    "jpg",
+                ),
+            )
+
+        def mobile_download_url(relative_path: str) -> str:
+            return url_for(
+                "mobile_download_file",
+                relative_path=relative_path,
+                prefer=preferred_mobile_download_format(request.headers.get("User-Agent", "")),
+                token=download_token(
+                    app.config["MEDIA_ROOT"],
+                    relative_path,
+                    app.secret_key,
+                    "mobile",
+                ),
+            )
+
+        return {
+            "download_url": download_url,
+            "jpeg_download_url": jpeg_download_url,
+            "mobile_download_url": mobile_download_url,
+        }
 
     @app.template_filter("filesize")
     def filesize(value: int) -> str:
@@ -203,13 +242,49 @@ def create_app() -> Flask:
         target = resolve_media_file(media_root, relative_path)
         if target is None:
             abort(404)
-        return send_file(
+        return send_original_download(target)
+
+    @app.route("/mobile-downloads/<path:relative_path>")
+    def mobile_download_file(relative_path: str):
+        media_root = app.config["MEDIA_ROOT"]
+        target = resolve_media_file(media_root, relative_path)
+        if target is None:
+            abort(404)
+        if wants_jpeg_download(
+            request.headers.get("User-Agent", ""),
+            request.args.get("prefer", ""),
+        ) and target.suffix.lower() in HEIF_IMAGE_EXTENSIONS:
+            if not can_generate_preview(target.suffix.lower()):
+                abort(415)
+            cache_path = export_cache_path(
+                app.config["CACHE_ROOT"],
+                media_root,
+                target,
+                "jpg",
+            )
+            if not cache_path.exists():
+                generate_jpeg_export(target, cache_path)
+            return send_jpeg_download(cache_path, target)
+        return send_original_download(target)
+
+    @app.route("/downloads-jpg/<path:relative_path>")
+    def download_jpeg_file(relative_path: str):
+        media_root = app.config["MEDIA_ROOT"]
+        target = resolve_media_file(media_root, relative_path)
+        if target is None:
+            abort(404)
+        if target.suffix.lower() not in HEIF_IMAGE_EXTENSIONS or not can_generate_preview(target.suffix.lower()):
+            abort(415)
+
+        cache_path = export_cache_path(
+            app.config["CACHE_ROOT"],
+            media_root,
             target,
-            as_attachment=True,
-            download_name=target.name,
-            conditional=True,
-            max_age=0,
+            "jpg",
         )
+        if not cache_path.exists():
+            generate_jpeg_export(target, cache_path)
+        return send_jpeg_download(cache_path, target)
 
     @app.route("/previews/<path:relative_path>")
     def preview_file(relative_path: str):
@@ -339,28 +414,73 @@ def resolve_media_file(media_root: Path, relative_path: str) -> Path | None:
     return target
 
 
-def download_token(media_root: Path, relative_path: str, secret_key: str) -> str:
+def download_token(media_root: Path, relative_path: str, secret_key: str, variant: str = "original") -> str:
     target = resolve_media_file(media_root, relative_path)
     if target is None:
         return ""
-    return file_signature_token(media_root, target, secret_key)
+    return file_signature_token(media_root, target, secret_key, variant)
 
 
-def is_valid_download_token(media_root: Path, relative_path: str | None, token: str, secret_key: str) -> bool:
+def is_valid_download_token(
+    media_root: Path,
+    relative_path: str | None,
+    token: str,
+    secret_key: str,
+    variant: str = "original",
+) -> bool:
     if not relative_path or not token:
         return False
     target = resolve_media_file(media_root, relative_path)
     if target is None:
         return False
-    expected = file_signature_token(media_root, target, secret_key)
+    expected = file_signature_token(media_root, target, secret_key, variant)
     return compare_digest(token, expected)
 
 
-def file_signature_token(media_root: Path, target: Path, secret_key: str) -> str:
+def file_signature_token(media_root: Path, target: Path, secret_key: str, variant: str) -> str:
     stat = target.stat()
     relative_path = target.relative_to(media_root).as_posix()
-    message = f"{relative_path}:{stat.st_mtime_ns}:{stat.st_size}".encode("utf-8")
+    message = f"{variant}:{relative_path}:{stat.st_mtime_ns}:{stat.st_size}".encode("utf-8")
     return hmac.new(secret_key.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def preferred_mobile_download_format(user_agent: str) -> str:
+    normalized = user_agent.lower()
+    if "android" in normalized:
+        return "jpg"
+    if "iphone" in normalized or "ipad" in normalized or "ipod" in normalized:
+        return "original"
+    return "original"
+
+
+def wants_jpeg_download(user_agent: str, preference: str) -> bool:
+    normalized_preference = preference.lower()
+    if normalized_preference == "jpg":
+        return True
+    if normalized_preference in {"heic", "heif", "original"}:
+        return False
+    return preferred_mobile_download_format(user_agent) == "jpg"
+
+
+def send_original_download(target: Path):
+    return send_file(
+        target,
+        as_attachment=True,
+        download_name=target.name,
+        conditional=True,
+        max_age=0,
+    )
+
+
+def send_jpeg_download(cache_path: Path, source: Path):
+    return send_file(
+        cache_path,
+        as_attachment=True,
+        download_name=f"{source.stem}.jpg",
+        mimetype="image/jpeg",
+        conditional=True,
+        max_age=0,
+    )
 
 
 def can_generate_preview(extension: str) -> bool:
@@ -379,6 +499,14 @@ def preview_cache_path(cache_root: Path, media_root: Path, source: Path, max_siz
     return cache_root / digest[:2] / f"{digest}.webp"
 
 
+def export_cache_path(cache_root: Path, media_root: Path, source: Path, export_format: str) -> Path:
+    source_stat = source.stat()
+    relative_path = source.relative_to(media_root).as_posix()
+    cache_key = f"export:{export_format}:{relative_path}:{source_stat.st_mtime_ns}:{source_stat.st_size}"
+    digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
+    return cache_root / "exports" / digest[:2] / f"{digest}.{export_format}"
+
+
 def generate_preview(source: Path, destination: Path, max_size: int) -> None:
     if Image is None or ImageOps is None:
         abort(415)
@@ -392,6 +520,24 @@ def generate_preview(source: Path, destination: Path, max_size: int) -> None:
             if image.mode not in {"RGB", "L"}:
                 image = image.convert("RGB")
             image.save(temp_destination, "WEBP", quality=82, method=4)
+        os.replace(temp_destination, destination)
+    except Exception:
+        if temp_destination.exists():
+            temp_destination.unlink()
+        abort(415)
+
+
+def generate_jpeg_export(source: Path, destination: Path) -> None:
+    if Image is None or ImageOps is None:
+        abort(415)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_destination = destination.with_name(f"{destination.stem}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        with Image.open(source) as image:
+            image = ImageOps.exif_transpose(image)
+            image = image.convert("RGB")
+            image.save(temp_destination, "JPEG", quality=94, optimize=True, progressive=True)
         os.replace(temp_destination, destination)
     except Exception:
         if temp_destination.exists():
